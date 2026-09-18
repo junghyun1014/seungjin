@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>단계별 게임 개발 - 모바일 조작 컨트롤</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 세로형 게임 화면 비율 및 스케치 스타일 설정 */
+        .game-screen {
+            width: 100%;
+            max-width: 420px;
+            height: min(90vh, 750px);
+            aspect-ratio: 9 / 16;
+            background-color: #ffffff;
+            border: 4px solid #3b4252;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+            touch-action: none;
+        }
+
+        /* 질감 및 연필/크레용 느낌을 주기 위한 SVG 필터 */
+        .sketch-style {
+            filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.2));
+        }
+
+        /* 모바일 터치 시 텍스트 및 오버레이 선택 방지 */
+        * {
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+        }
+    </style>
+</head>
+<body class="bg-gray-950 min-h-screen flex flex-col items-center justify-center p-2 m-0 font-sans select-none text-white overflow-hidden touch-none">
+
+    <!-- 세로로 긴 게임 화면 프레임 -->
+    <div id="game-container" class="game-screen relative rounded-3xl overflow-hidden touch-none select-none">
+        
+        <!-- 상단 여백 영역 -->
+        <div class="w-full pt-4 text-center text-xs text-gray-400 tracking-widest uppercase pointer-events-none select-none z-10 relative font-bold">
+            PENCIL SHOOTER
+        </div>
+
+        <!-- 점수 표시 영역 (우측 상단) -->
+        <div id="score-display" class="absolute top-3 right-4 text-gray-800 text-base font-extrabold tracking-wider z-20 pointer-events-none select-none bg-white/90 px-3 py-1 rounded-full border border-gray-300 shadow-md">
+            점수: <span id="score-value">0</span>
+        </div>
+
+        <!-- 이동 가능한 비행기 -->
+        <div id="player" class="absolute transition-none z-10" style="width: 100px; height: 116px; left: 0px; top: 0px;">
+            <svg class="sketch-style w-full h-full" viewBox="0 0 120 140" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <!-- 손그림 크레용 느낌을 살린 비행기 벡터 오버레이 -->
+                <g stroke="#121212" stroke-linecap="round" stroke-linejoin="round">
+                    <!-- 날개 (좌/우) -->
+                    <path d="M 15 75 C 5 70 2 60 10 55 C 25 60 40 68 45 70 Z" fill="#222222" stroke-width="3"/>
+                    <path d="M 105 75 C 115 70 118 60 110 55 C 95 60 80 68 75 70 Z" fill="#222222" stroke-width="3"/>
+                    
+                    <!-- 몸통 (세로 방향, 위쪽이 머리) -->
+                    <path d="M 60 10 
+                             C 80 25, 82 60, 78 95 
+                             C 75 110, 68 118, 60 120 
+                             C 52 118, 45 110, 42 95 
+                             C 38 60, 40 25, 60 10 Z" 
+                          fill="#1c1c1c" stroke-width="4"/>
+                    
+                    <!-- 꼬리 날개 -->
+                    <path d="M 60 118 L 40 135 L 80 135 Z" fill="#222222" stroke-width="3"/>
+                    
+                    <!-- 조종석 창문 -->
+                    <path d="M 52 28 C 50 20, 68 20, 68 28 C 68 36, 52 36, 52 28 Z" fill="#d0d8e0" stroke="#121212" stroke-width="3"/>
+                    
+                    <!-- 그림 특유의 손으로 칠한 듯한 크레용 질감 텍스처 선들 -->
+                    <path d="M 50 40 L 70 42 M 48 50 L 72 52 M 45 65 L 75 62 M 46 80 L 74 78 M 48 95 L 70 96 M 52 108 L 68 106" stroke="#333333" stroke-width="2.5"/>
+                    <path d="M 55 18 L 65 22 M 57 45 L 63 88" stroke="#000000" stroke-width="2"/>
+                </g>
+            </svg>
+        </div>
+
+        <!-- 모바일 가상 조작 버튼 (방향키 패드 및 발사 버튼) -->
+        <div id="mobile-controls" class="absolute bottom-4 left-3 right-3 flex justify-between items-end z-30 select-none touch-none pointer-events-auto">
+            <!-- 방향키 D-Pad -->
+            <div class="grid grid-cols-3 gap-1 w-32 h-32 p-2 bg-black/20 backdrop-blur-md rounded-2xl border border-gray-300/60 shadow-lg">
+                <div></div>
+                <button id="btn-up" class="bg-white/90 active:bg-yellow-400 text-gray-900 font-black rounded-lg flex items-center justify-center text-lg shadow active:scale-95 transition-transform border border-gray-300 select-none touch-none">▲</button>
+                <div></div>
+                <button id="btn-left" class="bg-white/90 active:bg-yellow-400 text-gray-900 font-black rounded-lg flex items-center justify-center text-lg shadow active:scale-95 transition-transform border border-gray-300 select-none touch-none">◀</button>
+                <div class="bg-gray-400/30 rounded-lg"></div>
+                <button id="btn-right" class="bg-white/90 active:bg-yellow-400 text-gray-900 font-black rounded-lg flex items-center justify-center text-lg shadow active:scale-95 transition-transform border border-gray-300 select-none touch-none">▶</button>
+                <div></div>
+                <button id="btn-down" class="bg-white/90 active:bg-yellow-400 text-gray-900 font-black rounded-lg flex items-center justify-center text-lg shadow active:scale-95 transition-transform border border-gray-300 select-none touch-none">▼</button>
+                <div></div>
+            </div>
+
+            <!-- 발사 버튼 -->
+            <button id="btn-fire" class="w-24 h-24 bg-gradient-to-br from-red-500 to-amber-400 active:from-yellow-400 active:to-red-600 text-white font-black rounded-full flex items-center justify-center text-lg shadow-xl border-4 border-white active:scale-90 transition-transform select-none touch-none">
+                발사
+            </button>
+        </div>
+
+        <!-- 게임 오버 오버레이 화면 -->
+        <div id="game-over-screen" class="absolute inset-0 bg-black/80 flex flex-col items-center justify-center hidden z-40 transition-opacity duration-300">
+            <div class="text-4xl font-extrabold text-red-500 mb-2 tracking-widest drop-shadow-lg">GAME OVER</div>
+            <p class="text-xs text-gray-300 mb-6 tracking-wide px-4 text-center">적이 화면에 침투했거나 비행기와 충돌했습니다.</p>
+            <button id="restart-btn" class="px-6 py-2.5 bg-yellow-400 hover:bg-yellow-300 active:scale-95 text-gray-950 font-bold rounded-full shadow-lg transition">
+                다시 시작하기
+            </button>
+        </div>
+
+    </div>
+
+    <script>
+        // 비행기 위치 및 이동 제어 스크립트
+        const gameContainer = document.getElementById('game-container');
+        const player = document.getElementById('player');
+
+        const PLAYER_WIDTH = 100;
+        const PLAYER_HEIGHT = 116;
+        const SPEED = 5;
+
+        let playerPos = { x: 0, y: 0 };
+        const keys = {};
+
+        // 총알 관리 배열 및 설정
+        const bullets = [];
+        const BULLET_WIDTH = 8;
+        const BULLET_HEIGHT = 20;
+        const BULLET_SPEED = 9;
+        let lastShootTime = 0;
+        const SHOOT_COOLDOWN = 160; // 발사 간격 (ms)
+
+        // 적 관리 배열 및 설정
+        const enemies = [];
+        const ENEMY_WIDTH = 60;
+        const ENEMY_HEIGHT = 60;
+        const ENEMY_SPEED = 1.5; // 천천히 내려오는 속도
+        let lastEnemySpawnTime = 0;
+        const ENEMY_SPAWN_INTERVAL = 2000; // 2초 (ms)
+
+        // 게임 오버 상태 및 DOM 엘리먼트
+        let isGameOver = false;
+        const gameOverScreen = document.getElementById('game-over-screen');
+        const restartBtn = document.getElementById('restart-btn');
+
+        // 점수 관련 변수
+        let score = 0;
+        const scoreValue = document.getElementById('score-value');
+
+        if (restartBtn) {
+            restartBtn.addEventListener('click', restartGame);
+        }
+
+        // 두 사각형 영역(AABB)의 충돌 검사 함수
+        function checkCollision(r1, r2) {
+            return (
+                r1.x < r2.x + r2.width &&
+                r1.x + r1.width > r2.x &&
+                r1.y < r2.y + r2.height &&
+                r1.y + r1.height > r2.y
+            );
+        }
+
+        // 게임 오버 상태 발동 함수
+        function triggerGameOver() {
+            isGameOver = true;
+            gameOverScreen.classList.remove('hidden');
+        }
+
+        // 게임 재시작 함수
+        function restartGame() {
+            // 점수 초기화
+            score = 0;
+            if (scoreValue) scoreValue.textContent = score;
+
+            // 화면 상의 총알과 적 엘리먼트 제거
+            bullets.forEach(b => b.element.remove());
+            bullets.length = 0;
+
+            enemies.forEach(e => e.element.remove());
+            enemies.length = 0;
+
+            // 비행기 위치 초기화
+            const containerWidth = gameContainer.clientWidth;
+            const containerHeight = gameContainer.clientHeight;
+            playerPos.x = (containerWidth - PLAYER_WIDTH) / 2;
+            playerPos.y = containerHeight - PLAYER_HEIGHT - 120;
+            player.style.left = playerPos.x + 'px';
+            player.style.top = playerPos.y + 'px';
+
+            isGameOver = false;
+            gameOverScreen.classList.add('hidden');
+            lastEnemySpawnTime = performance.now();
+            requestAnimationFrame(updatePosition);
+        }
+
+        // 방향키 및 스페이스바 눌림 처리 (화면 스크롤 방지 포함)
+        window.addEventListener('keydown', (e) => {
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ', 'Space'].includes(e.key) || e.code === 'Space') {
+                e.preventDefault();
+                keys[e.key] = true;
+                if (e.code === 'Space') keys['Space'] = true;
+            }
+        });
+
+        // 방향키 및 스페이스바 떼짐 처리
+        window.addEventListener('keyup', (e) => {
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ', 'Space'].includes(e.key) || e.code === 'Space') {
+                keys[e.key] = false;
+                if (e.code === 'Space') keys['Space'] = false;
+            }
+        });
+
+        // 모바일 가상 조작 버튼 이벤트 바인딩 (터치 및 마우스 클릭 동시 지원)
+        function bindTouchControl(id, keyName) {
+            const btn = document.getElementById(id);
+            if (!btn) return;
+
+            const handleStart = (e) => {
+                if (e.cancelable) e.preventDefault();
+                keys[keyName] = true;
+            };
+
+            const handleEnd = (e) => {
+                if (e.cancelable) e.preventDefault();
+                keys[keyName] = false;
+            };
+
+            btn.addEventListener('touchstart', handleStart, { passive: false });
+            btn.addEventListener('touchend', handleEnd, { passive: false });
+            btn.addEventListener('touchcancel', handleEnd, { passive: false });
+
+            btn.addEventListener('mousedown', handleStart);
+            btn.addEventListener('mouseup', handleEnd);
+            btn.addEventListener('mouseleave', handleEnd);
+        }
+
+        bindTouchControl('btn-up', 'ArrowUp');
+        bindTouchControl('btn-down', 'ArrowDown');
+        bindTouchControl('btn-left', 'ArrowLeft');
+        bindTouchControl('btn-right', 'ArrowRight');
+        bindTouchControl('btn-fire', 'Space');
+
+        // 총알 생성 함수
+        function createBullet() {
+            const bulletElem = document.createElement('div');
+            bulletElem.className = 'absolute rounded-full bg-yellow-400 border border-yellow-600 shadow-sm transition-none';
+            bulletElem.style.width = BULLET_WIDTH + 'px';
+            bulletElem.style.height = BULLET_HEIGHT + 'px';
+            
+            // 비행기 상단 중앙 위치 계산
+            const startX = playerPos.x + (PLAYER_WIDTH / 2) - (BULLET_WIDTH / 2);
+            const startY = playerPos.y - BULLET_HEIGHT;
+
+            bulletElem.style.left = startX + 'px';
+            bulletElem.style.top = startY + 'px';
+
+            gameContainer.appendChild(bulletElem);
+
+            bullets.push({
+                element: bulletElem,
+                x: startX,
+                y: startY
+            });
+        }
+
+        // 총알 이동 및 적 충돌 처리
+        function updateBullets() {
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                const b = bullets[i];
+                b.y -= BULLET_SPEED;
+                
+                // 화면 위쪽으로 나가면 삭제
+                if (b.y + BULLET_HEIGHT < 0) {
+                    b.element.remove();
+                    bullets.splice(i, 1);
+                    continue;
+                }
+                
+                b.element.style.top = b.y + 'px';
+
+                // 총알과 적의 충돌 검사
+                const bulletRect = { x: b.x, y: b.y, width: BULLET_WIDTH, height: BULLET_HEIGHT };
+                
+                for (let j = enemies.length - 1; j >= 0; j--) {
+                    const e = enemies[j];
+                    const enemyRect = { x: e.x, y: e.y, width: ENEMY_WIDTH, height: ENEMY_HEIGHT };
+
+                    if (checkCollision(bulletRect, enemyRect)) {
+                        // 적과 총알 모두 삭제
+                        e.element.remove();
+                        enemies.splice(j, 1);
+
+                        b.element.remove();
+                        bullets.splice(i, 1);
+
+                        // 점수 10점 추가 및 화면 업데이트
+                        score += 10;
+                        if (scoreValue) scoreValue.textContent = score;
+
+                        break;
+                    }
+                }
+            }
+        }
+
+        // 적 생성 함수 (손그림 뽀로로 스타일)
+        function createEnemy() {
+            const containerWidth = gameContainer.clientWidth;
+            const enemyElem = document.createElement('div');
+            enemyElem.className = 'absolute transition-none pointer-events-none';
+            enemyElem.style.width = ENEMY_WIDTH + 'px';
+            enemyElem.style.height = ENEMY_HEIGHT + 'px';
+
+            // 화면 가로 범위 내 랜덤 X 위치
+            const startX = Math.random() * (containerWidth - ENEMY_WIDTH);
+            const startY = -ENEMY_HEIGHT;
+
+            enemyElem.style.left = startX + 'px';
+            enemyElem.style.top = startY + 'px';
+
+            // 조종사 모자와 고글을 쓴 손그림 스타일의 뽀로로 SVG
+            enemyElem.innerHTML = `
+                <svg class="sketch-style w-full h-full" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <g stroke="#121212" stroke-linecap="round" stroke-linejoin="round">
+                        <!-- 파란 동그란 뽀로로 얼굴 -->
+                        <circle cx="40" cy="44" r="28" fill="#3b82f6" stroke-width="3.5"/>
+                        
+                        <!-- 흰색 눈 주변 영역 -->
+                        <ellipse cx="28" cy="44" rx="10" ry="11" fill="#ffffff" stroke="#121212" stroke-width="2"/>
+                        <ellipse cx="52" cy="44" rx="10" ry="11" fill="#ffffff" stroke="#121212" stroke-width="2"/>
+                        
+                        <!-- 눈동자 -->
+                        <circle cx="30" cy="44" r="3.5" fill="#121212"/>
+                        <circle cx="50" cy="44" r="3.5" fill="#121212"/>
+                        
+                        <!-- 노란색 조종사 헬멧 -->
+                        <path d="M 13 40 C 12 18, 68 18, 67 40 C 58 24, 22 24, 13 40 Z" fill="#facc15" stroke-width="3"/>
+                        <!-- 헬멧 'P' 로고 -->
+                        <text x="40" y="27" font-family="sans-serif" font-weight="900" font-size="11" fill="#dc2626" text-anchor="middle" stroke="none">P</text>
+                        
+                        <!-- 주황색 조종사 고글 -->
+                        <rect x="17" y="34" width="21" height="13" rx="6" fill="#e0f2fe" stroke="#d97706" stroke-width="3"/>
+                        <rect x="42" y="34" width="21" height="13" rx="6" fill="#e0f2fe" stroke="#d97706" stroke-width="3"/>
+                        <line x1="38" y1="40" x2="42" y2="40" stroke="#d97706" stroke-width="3"/>
+
+                        <!-- 주황색 오리 부리 -->
+                        <ellipse cx="40" cy="55" rx="7" ry="5" fill="#fb923c" stroke-width="2.5"/>
+                        
+                        <!-- 손그림 크레용 느낌 질감 선 -->
+                        <path d="M 22 62 L 58 62" stroke="#121212" stroke-width="2.5"/>
+                        <path d="M 16 52 L 22 55 M 64 52 L 58 55" stroke="#1e3a8a" stroke-width="2"/>
+                    </g>
+                </svg>
+            `;
+
+            gameContainer.appendChild(enemyElem);
+
+            enemies.push({
+                element: enemyElem,
+                x: startX,
+                y: startY
+            });
+        }
+
+        // 적 이동, 화면 아래 도달 시 게임오버 및 비행기 충돌 검사
+        function updateEnemies() {
+            const playerRect = { x: playerPos.x, y: playerPos.y, width: PLAYER_WIDTH, height: PLAYER_HEIGHT };
+
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                const enemy = enemies[i];
+                enemy.y += ENEMY_SPEED;
+
+                const enemyRect = { x: enemy.x, y: enemy.y, width: ENEMY_WIDTH, height: ENEMY_HEIGHT };
+
+                // 1. 비행기와 적의 충돌 검사 -> 게임 오버
+                if (checkCollision(enemyRect, playerRect)) {
+                    triggerGameOver();
+                    return;
+                }
+
+                // 2. 화면 아래 끝까지 내려왔는지 검사 -> 게임 오버
+                if (enemy.y + ENEMY_HEIGHT >= gameContainer.clientHeight) {
+                    triggerGameOver();
+                    return;
+                }
+
+                enemy.element.style.top = enemy.y + 'px';
+            }
+        }
+
+        // 매 프레임마다 위치 업데이트 및 화면 경계 제한
+        function updatePosition(timestamp) {
+            if (isGameOver) return; // 게임오버 시 업데이트 중단
+
+            const containerWidth = gameContainer.clientWidth;
+            const containerHeight = gameContainer.clientHeight;
+
+            if (keys['ArrowLeft']) playerPos.x -= SPEED;
+            if (keys['ArrowRight']) playerPos.x += SPEED;
+            if (keys['ArrowUp']) playerPos.y -= SPEED;
+            if (keys['ArrowDown']) playerPos.y += SPEED;
+
+            const currentTime = timestamp || performance.now();
+
+            // 스페이스바 또는 모바일 발사 버튼 누르고 있을 때 총알 지속 발사
+            if (keys['Space'] || keys[' ']) {
+                if (currentTime - lastShootTime > SHOOT_COOLDOWN) {
+                    createBullet();
+                    lastShootTime = currentTime;
+                }
+            }
+
+            // 2초마다 새로운 적 생성
+            if (currentTime - lastEnemySpawnTime > ENEMY_SPAWN_INTERVAL) {
+                createEnemy();
+                lastEnemySpawnTime = currentTime;
+            }
+
+            // 게임 화면 영역 밖으로 나가지 못하도록 제한
+            playerPos.x = Math.max(0, Math.min(containerWidth - PLAYER_WIDTH, playerPos.x));
+            playerPos.y = Math.max(0, Math.min(containerHeight - PLAYER_HEIGHT, playerPos.y));
+
+            player.style.left = playerPos.x + 'px';
+            player.style.top = playerPos.y + 'px';
+
+            // 총알 및 적 위치 업데이트
+            updateBullets();
+            updateEnemies();
+
+            if (!isGameOver) {
+                requestAnimationFrame(updatePosition);
+            }
+        }
+
+        // 초기 화면 위치 설정 및 애니메이션 루프 시작
+        function init() {
+            const containerWidth = gameContainer.clientWidth;
+            const containerHeight = gameContainer.clientHeight;
+            
+            playerPos.x = (containerWidth - PLAYER_WIDTH) / 2;
+            playerPos.y = containerHeight - PLAYER_HEIGHT - 120;
+            
+            player.style.left = playerPos.x + 'px';
+            player.style.top = playerPos.y + 'px';
+            
+            requestAnimationFrame(updatePosition);
+        }
+
+        window.addEventListener('load', init);
+
+        // 창 크기 변경 시 비행기 위치 범위 보정
+        window.addEventListener('resize', () => {
+            const containerWidth = gameContainer.clientWidth;
+            const containerHeight = gameContainer.clientHeight;
+            playerPos.x = Math.max(0, Math.min(containerWidth - PLAYER_WIDTH, playerPos.x));
+            playerPos.y = Math.max(0, Math.min(containerHeight - PLAYER_HEIGHT, playerPos.y));
+            player.style.left = playerPos.x + 'px';
+            player.style.top = playerPos.y + 'px';
+        });
+    </script>
+</body>
+</html>
